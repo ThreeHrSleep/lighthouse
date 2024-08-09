@@ -52,8 +52,8 @@ use crate::observed_aggregates::{
 use crate::observed_attesters::{
     ObservedAggregators, ObservedAttesters, ObservedSyncAggregators, ObservedSyncContributors,
 };
-use crate::observed_blob_sidecars::ObservedBlobSidecars;
 use crate::observed_block_producers::ObservedBlockProducers;
+use crate::observed_data_sidecars::ObservedDataSidecars;
 use crate::observed_operations::{ObservationOutcome, ObservedOperations};
 use crate::observed_slashable::ObservedSlashable;
 use crate::persisted_beacon_chain::{PersistedBeaconChain, DUMMY_CANONICAL_HEAD_BLOCK_ROOT};
@@ -415,7 +415,9 @@ pub struct BeaconChain<T: BeaconChainTypes> {
     /// Maintains a record of which validators have proposed blocks for each slot.
     pub observed_block_producers: RwLock<ObservedBlockProducers<T::EthSpec>>,
     /// Maintains a record of blob sidecars seen over the gossip network.
-    pub observed_blob_sidecars: RwLock<ObservedBlobSidecars<T::EthSpec>>,
+    pub observed_blob_sidecars: RwLock<ObservedDataSidecars<BlobSidecar<T::EthSpec>>>,
+    /// Maintains a record of column sidecars seen over the gossip network.
+    pub observed_column_sidecars: RwLock<ObservedDataSidecars<DataColumnSidecar<T::EthSpec>>>,
     /// Maintains a record of slashable message seen over the gossip network or RPC.
     pub observed_slashable: RwLock<ObservedSlashable<T::EthSpec>>,
     /// Maintains a record of which validators have submitted voluntary exits.
@@ -1349,10 +1351,23 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
     ) -> Result<(), Error> {
         self.light_client_server_cache.recompute_and_cache_updates(
             self.store.clone(),
-            &parent_root,
             slot,
+            &parent_root,
             &sync_aggregate,
             &self.log,
+            &self.spec,
+        )
+    }
+
+    pub fn get_light_client_updates(
+        &self,
+        sync_committee_period: u64,
+        count: u64,
+    ) -> Result<Vec<LightClientUpdate<T::EthSpec>>, Error> {
+        self.light_client_server_cache.get_light_client_updates(
+            &self.store,
+            sync_committee_period,
+            count,
             &self.spec,
         )
     }
@@ -2957,9 +2972,9 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         self: &Arc<Self>,
         data_columns: Vec<GossipVerifiedDataColumn<T>>,
     ) -> Result<AvailabilityProcessingStatus, BlockError<T::EthSpec>> {
-        let Ok(block_root) = data_columns
+        let Ok((slot, block_root)) = data_columns
             .iter()
-            .map(|c| c.block_root())
+            .map(|c| (c.slot(), c.block_root()))
             .unique()
             .exactly_one()
         else {
@@ -2979,7 +2994,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         }
 
         let r = self
-            .check_gossip_data_columns_availability_and_import(data_columns)
+            .check_gossip_data_columns_availability_and_import(slot, block_root, data_columns)
             .await;
         self.remove_notified_custody_columns(&block_root, r)
     }
@@ -3296,6 +3311,8 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
     /// if so, otherwise caches the data column in the data availability checker.
     async fn check_gossip_data_columns_availability_and_import(
         self: &Arc<Self>,
+        slot: Slot,
+        block_root: Hash256,
         data_columns: Vec<GossipVerifiedDataColumn<T>>,
     ) -> Result<AvailabilityProcessingStatus, BlockError<T::EthSpec>> {
         if let Some(slasher) = self.slasher.as_ref() {
@@ -3304,15 +3321,11 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
             }
         }
 
-        let Ok(slot) = data_columns.iter().map(|c| c.slot()).unique().exactly_one() else {
-            return Err(BlockError::InternalError(
-                "Columns for the same block should have matching slot".to_string(),
-            ));
-        };
-
-        let availability = self
-            .data_availability_checker
-            .put_gossip_data_columns(data_columns)?;
+        let availability = self.data_availability_checker.put_gossip_data_columns(
+            slot,
+            block_root,
+            data_columns,
+        )?;
 
         self.process_availability(slot, availability).await
     }
@@ -3627,7 +3640,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         // If the write fails, revert fork choice to the version from disk, else we can
         // end up with blocks in fork choice that are missing from disk.
         // See https://github.com/sigp/lighthouse/issues/2028
-        let (_, signed_block, blobs) = signed_block.deconstruct();
+        let (_, signed_block, blobs, data_columns) = signed_block.deconstruct();
         let block = signed_block.message();
         ops.extend(
             confirmed_state_roots
@@ -3646,6 +3659,18 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
                 );
                 ops.push(StoreOp::PutBlobs(block_root, blobs));
             }
+        }
+
+        if let Some(_data_columns) = data_columns {
+            // TODO(das): depends on https://github.com/sigp/lighthouse/pull/6073
+            // if !data_columns.is_empty() {
+            //     debug!(
+            //         self.log, "Writing data_columns to store";
+            //         "block_root" => %block_root,
+            //         "count" => data_columns.len(),
+            //     );
+            //     ops.push(StoreOp::PutDataColumns(block_root, data_columns));
+            // }
         }
 
         let txn_lock = self.store.hot_db.begin_rw_transaction();
@@ -6764,12 +6789,7 @@ impl<T: BeaconChainTypes> BeaconChain<T> {
         &self,
         block_root: &Hash256,
     ) -> Result<Option<(LightClientBootstrap<T::EthSpec>, ForkName)>, Error> {
-        let handle = self
-            .task_executor
-            .handle()
-            .ok_or(BeaconChainError::RuntimeShutdown)?;
-
-        let Some(block) = handle.block_on(async { self.get_block(block_root).await })? else {
+        let Some(block) = self.get_blinded_block(block_root)? else {
             return Ok(None);
         };
 
