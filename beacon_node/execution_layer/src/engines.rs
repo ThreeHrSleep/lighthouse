@@ -4,6 +4,7 @@ use crate::engine_api::{
     EngineCapabilities, Error as EngineApiError, ForkchoiceUpdatedResponse, PayloadAttributes,
     PayloadId,
 };
+use crate::http::ExecutionBackend;
 use crate::{ClientVersionV1, HttpJsonRpc};
 use lru::LruCache;
 use slog::{debug, error, info, warn, Logger};
@@ -122,8 +123,8 @@ pub enum EngineError {
 }
 
 /// An execution engine.
-pub struct Engine {
-    pub api: HttpJsonRpc,
+pub struct Engine<Backend: ExecutionBackend = HttpJsonRpc> {
+    pub api: Backend,
     payload_id_cache: Mutex<LruCache<PayloadIdCacheKey, PayloadId>>,
     state: RwLock<State>,
     latest_forkchoice_state: RwLock<Option<ForkchoiceState>>,

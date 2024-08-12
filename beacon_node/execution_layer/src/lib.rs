@@ -12,7 +12,7 @@ use builder_client::BuilderHttpClient;
 pub use engine_api::EngineCapabilities;
 use engine_api::Error as ApiError;
 pub use engine_api::*;
-pub use engine_api::{http, http::deposit_methods, http::HttpJsonRpc};
+pub use engine_api::{http, http::deposit_methods, http::ExecutionBackend, http::HttpJsonRpc};
 use engines::{Engine, EngineError};
 pub use engines::{EngineState, ForkchoiceState};
 use eth2::types::FullPayloadContents;

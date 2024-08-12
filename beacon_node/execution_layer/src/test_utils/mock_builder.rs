@@ -1,5 +1,5 @@
 use crate::test_utils::{DEFAULT_BUILDER_PAYLOAD_VALUE_WEI, DEFAULT_JWT_SECRET};
-use crate::{Config, ExecutionLayer, PayloadAttributes};
+use crate::{Config, ExecutionBackend, ExecutionLayer, PayloadAttributes};
 use eth2::types::{BlobsBundle, BlockId, StateId, ValidatorId};
 use eth2::{BeaconNodeHttpClient, Timeouts, CONSENSUS_VERSION_HEADER};
 use fork_choice::ForkchoiceUpdateParameters;
