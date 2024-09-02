@@ -41,8 +41,8 @@ use store::{Error as StoreError, HotColdDB, ItemStore, KeyValueStoreOp};
 use task_executor::{ShutdownReason, TaskExecutor};
 use tracing::{debug, error, info};
 use types::{
-    BeaconBlock, BeaconState, BlobSidecarList, ChainSpec, Checkpoint, Epoch, EthSpec, Hash256,
-    Signature, SignedBeaconBlock, Slot,
+    BeaconBlock, BeaconState, BlobSidecarList, ChainSpec, Checkpoint, Epoch, EthSpec,
+    FixedBytesExtended, Hash256, Signature, SignedBeaconBlock, Slot,
 };
 /// An empty struct used to "witness" all the `BeaconChainTypes` traits. It has no user-facing
 /// functionality and only exists to satisfy the type system.
@@ -1285,7 +1285,7 @@ mod test {
         }
 
         for v in state.validators() {
-            let creds = v.withdrawal_credentials.as_bytes();
+            let creds = v.withdrawal_credentials.as_slice();
             assert_eq!(
                 creds[0], spec.bls_withdrawal_prefix_byte,
                 "first byte of withdrawal creds should be bls prefix"
