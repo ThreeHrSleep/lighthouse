@@ -1102,6 +1102,7 @@ dependencies = [
  "slog-scope",
  "slog-term",
  "tokio",
+ "tracing",
  "types",
 ]
 
@@ -8555,6 +8556,7 @@ version = "0.1.0"
 dependencies = [
  "logging",
  "slog",
+ "tracing",
 ]
 
 [[package]]
