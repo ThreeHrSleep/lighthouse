@@ -1,11 +1,14 @@
-use crate::engine_api::{
-    json_structures::{
-        JsonForkchoiceUpdatedV1Response, JsonPayloadStatusV1, JsonPayloadStatusV1Status,
-    },
-    ExecutionBlock, PayloadAttributes, PayloadId, PayloadStatusV1, PayloadStatusV1Status,
-};
 use crate::engines::ForkchoiceState;
 use crate::EthersTransaction;
+use crate::{
+    engine_api::{
+        json_structures::{
+            JsonForkchoiceUpdatedV1Response, JsonPayloadStatusV1, JsonPayloadStatusV1Status,
+        },
+        ExecutionBlock, PayloadAttributes, PayloadId, PayloadStatusV1, PayloadStatusV1Status,
+    },
+    ExecutionBlockWithTransactions,
+};
 use eth2::types::BlobsBundle;
 use kzg::{Kzg, KzgCommitment, KzgProof};
 use parking_lot::Mutex;
@@ -20,8 +23,7 @@ use tree_hash_derive::TreeHash;
 use types::{
     Blob, ChainSpec, EthSpec, ExecutionBlockHash, ExecutionPayload, ExecutionPayloadBellatrix,
     ExecutionPayloadCapella, ExecutionPayloadDeneb, ExecutionPayloadElectra,
-    ExecutionPayloadHeader, FixedBytesExtended, ForkName, Hash256, Transaction, Transactions,
-    Uint256,
+    ExecutionPayloadHeader, ForkName, Hash256, Transaction, Transactions, Uint256,
 };
 
 use super::DEFAULT_TERMINAL_BLOCK;
@@ -86,13 +88,17 @@ impl<E: EthSpec> Block<E> {
         }
     }
 
-    pub fn as_execution_payload(&self) -> Option<ExecutionPayload<E>> {
+    pub fn as_execution_block_with_tx(&self) -> Option<ExecutionBlockWithTransactions<E>> {
         match self {
-            Block::PoS(payload) => Some(payload.clone()),
-            Block::PoW(block) => Some(ExecutionPayload::Bellatrix(ExecutionPayloadBellatrix {
-                block_hash: block.block_hash,
-                ..Default::default()
-            })),
+            Block::PoS(payload) => Some(payload.clone().try_into().unwrap()),
+            Block::PoW(block) => Some(
+                ExecutionPayload::Bellatrix(ExecutionPayloadBellatrix {
+                    block_hash: block.block_hash,
+                    ..Default::default()
+                })
+                .try_into()
+                .unwrap(),
+            ),
         }
     }
 }
@@ -101,9 +107,7 @@ impl<E: EthSpec> Block<E> {
 #[serde(rename_all = "camelCase")]
 pub struct PoWBlock {
     pub block_number: u64,
-
     pub block_hash: ExecutionBlockHash,
-
     pub parent_hash: ExecutionBlockHash,
     pub total_difficulty: Uint256,
     pub timestamp: u64,
@@ -248,17 +252,20 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
             .map(|block| block.as_execution_block(self.terminal_total_difficulty))
     }
 
-    pub fn execution_payload_by_hash(
+    pub fn execution_block_with_txs_by_hash(
         &self,
         hash: ExecutionBlockHash,
-    ) -> Option<ExecutionPayload<E>> {
+    ) -> Option<ExecutionBlockWithTransactions<E>> {
         self.block_by_hash(hash)
-            .and_then(|block| block.as_execution_payload())
+            .and_then(|block| block.as_execution_block_with_tx())
     }
 
-    pub fn execution_payload_by_number(&self, number: u64) -> Option<ExecutionPayload<E>> {
+    pub fn execution_block_with_txs_by_number(
+        &self,
+        number: u64,
+    ) -> Option<ExecutionBlockWithTransactions<E>> {
         self.block_by_number(number)
-            .and_then(|block| block.as_execution_payload())
+            .and_then(|block| block.as_execution_block_with_tx())
     }
 
     pub fn move_to_block_prior_to_terminal_block(&mut self) -> Result<(), String> {
@@ -574,7 +581,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
                 gas_used: GAS_USED,
                 timestamp: pa.timestamp,
                 extra_data: "block gen was here".as_bytes().to_vec().into(),
-                base_fee_per_gas: Uint256::from(1u64),
+                base_fee_per_gas: Uint256::one(),
                 block_hash: ExecutionBlockHash::zero(),
                 transactions: vec![].into(),
             }),
@@ -591,7 +598,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
                     gas_used: GAS_USED,
                     timestamp: pa.timestamp,
                     extra_data: "block gen was here".as_bytes().to_vec().into(),
-                    base_fee_per_gas: Uint256::from(1u64),
+                    base_fee_per_gas: Uint256::one(),
                     block_hash: ExecutionBlockHash::zero(),
                     transactions: vec![].into(),
                 }),
@@ -607,7 +614,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
                     gas_used: GAS_USED,
                     timestamp: pa.timestamp,
                     extra_data: "block gen was here".as_bytes().to_vec().into(),
-                    base_fee_per_gas: Uint256::from(1u64),
+                    base_fee_per_gas: Uint256::one(),
                     block_hash: ExecutionBlockHash::zero(),
                     transactions: vec![].into(),
                     withdrawals: pa.withdrawals.clone().into(),
@@ -627,7 +634,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
                     gas_used: GAS_USED,
                     timestamp: pa.timestamp,
                     extra_data: "block gen was here".as_bytes().to_vec().into(),
-                    base_fee_per_gas: Uint256::from(1u64),
+                    base_fee_per_gas: Uint256::one(),
                     block_hash: ExecutionBlockHash::zero(),
                     transactions: vec![].into(),
                     withdrawals: pa.withdrawals.clone().into(),
@@ -646,7 +653,7 @@ impl<E: EthSpec> ExecutionBlockGenerator<E> {
                     gas_used: GAS_USED,
                     timestamp: pa.timestamp,
                     extra_data: "block gen was here".as_bytes().to_vec().into(),
-                    base_fee_per_gas: Uint256::from(1u64),
+                    base_fee_per_gas: Uint256::one(),
                     block_hash: ExecutionBlockHash::zero(),
                     transactions: vec![].into(),
                     withdrawals: pa.withdrawals.clone().into(),
@@ -873,7 +880,7 @@ mod test {
         const DIFFICULTY_INCREMENT: u64 = 1;
 
         let mut generator: ExecutionBlockGenerator<MainnetEthSpec> = ExecutionBlockGenerator::new(
-            Uint256::from(TERMINAL_DIFFICULTY),
+            TERMINAL_DIFFICULTY.into(),
             TERMINAL_BLOCK,
             ExecutionBlockHash::zero(),
             None,
@@ -902,7 +909,7 @@ mod test {
 
             assert_eq!(
                 block.total_difficulty().unwrap(),
-                Uint256::from(i * DIFFICULTY_INCREMENT)
+                (i * DIFFICULTY_INCREMENT).into()
             );
 
             assert_eq!(generator.block_by_hash(block.block_hash()).unwrap(), block);
@@ -944,7 +951,6 @@ mod test {
         let kzg = load_kzg()?;
         let (kzg_commitment, kzg_proof, blob) = load_test_blobs_bundle::<E>()?;
         let kzg_blob = kzg::Blob::from_bytes(blob.as_ref())
-            .map(Box::new)
             .map_err(|e| format!("Error converting blob to kzg blob: {e:?}"))?;
         kzg.verify_blob_kzg_proof(&kzg_blob, kzg_commitment, kzg_proof)
             .map_err(|e| format!("Invalid blobs bundle: {e:?}"))

@@ -1661,11 +1661,7 @@ impl<E: EthSpec> Network<E> {
     /// Handle an identify event.
     fn inject_identify_event(&mut self, event: identify::Event) -> Option<NetworkEvent<E>> {
         match event {
-            identify::Event::Received {
-                peer_id,
-                mut info,
-                connection_id: _,
-            } => {
+            identify::Event::Received { peer_id, mut info } => {
                 if info.listen_addrs.len() > MAX_IDENTIFY_ADDRESSES {
                     debug!(
                         self.log,
@@ -1809,7 +1805,6 @@ impl<E: EthSpec> Network<E> {
                         self.inject_upnp_event(e);
                         None
                     }
-                    #[allow(unreachable_patterns)]
                     BehaviourEvent::ConnectionLimits(le) => void::unreachable(le),
                 },
                 SwarmEvent::ConnectionEstablished { .. } => None,

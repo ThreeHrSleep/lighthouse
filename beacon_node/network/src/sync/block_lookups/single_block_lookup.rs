@@ -1,3 +1,4 @@
+use super::common::ResponseType;
 use super::{BlockComponent, PeerId, SINGLE_BLOCK_LOOKUP_MAX_ATTEMPTS};
 use crate::sync::block_lookups::common::RequestState;
 use crate::sync::network_context::{
@@ -187,6 +188,7 @@ impl<T: BeaconChainTypes> SingleBlockLookup<T> {
             .state
             .peek_downloaded_data()
             .cloned();
+        let block_is_processed = self.block_request_state.state.is_processed();
         let request = R::request_state_mut(self);
 
         // Attempt to progress awaiting downloads
@@ -239,7 +241,12 @@ impl<T: BeaconChainTypes> SingleBlockLookup<T> {
         // Otherwise, attempt to progress awaiting processing
         // If this request is awaiting a parent lookup to be processed, do not send for processing.
         // The request will be rejected with unknown parent error.
-        } else if !awaiting_parent {
+        //
+        // TODO: The condition `block_is_processed || Block` can be dropped after checking for
+        // unknown parent root when import RPC blobs
+        } else if !awaiting_parent
+            && (block_is_processed || matches!(R::response_type(), ResponseType::Block))
+        {
             // maybe_start_processing returns Some if state == AwaitingProcess. This pattern is
             // useful to conditionally access the result data.
             if let Some(result) = request.get_state_mut().maybe_start_processing() {

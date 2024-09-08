@@ -268,7 +268,7 @@ pub async fn publish_block<T: BeaconChainTypes, B: IntoGossipVerifiedBlockConten
     }
 
     if let Some(gossip_verified_data_columns) = gossip_verified_data_columns {
-        let custody_columns_indices = &network_globals.custody_columns;
+        let custody_columns_indices = network_globals.custody_columns();
 
         let custody_columns = gossip_verified_data_columns
             .into_iter()
@@ -524,7 +524,7 @@ fn check_slashable<T: BeaconChainTypes>(
     block_root: Hash256,
     block_clone: &SignedBeaconBlock<T::EthSpec, FullPayload<T::EthSpec>>,
     log_clone: &Logger,
-) -> Result<(), BlockError> {
+) -> Result<(), BlockError<T::EthSpec>> {
     let slashable_cache = chain_clone.observed_slashable.read();
     if let Some(blobs) = blobs_opt.as_ref() {
         blobs.iter().try_for_each(|blob| {

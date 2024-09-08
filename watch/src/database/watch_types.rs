@@ -72,7 +72,7 @@ impl WatchHash {
     }
 
     pub fn as_bytes(&self) -> &[u8] {
-        self.0.as_slice()
+        self.0.as_bytes()
     }
 
     pub fn from_bytes(src: &[u8]) -> Result<WatchHash, Error> {

@@ -767,7 +767,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
         metrics::set_gauge(&metrics::BEACON_BLOB_DELAY_GOSSIP, delay.as_millis() as i64);
         match self
             .chain
-            .verify_blob_sidecar_for_gossip(blob_sidecar.clone(), blob_index)
+            .verify_blob_sidecar_for_gossip(blob_sidecar, blob_index)
         {
             Ok(gossip_verified_blob) => {
                 metrics::inc_counter(&metrics::BEACON_PROCESSOR_GOSSIP_BLOB_VERIFIED_TOTAL);
@@ -810,7 +810,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
             }
             Err(err) => {
                 match err {
-                    GossipBlobError::BlobParentUnknown { parent_root } => {
+                    GossipBlobError::BlobParentUnknown(blob) => {
                         debug!(
                             action = "requesting parent",
                             block_root = %root,
@@ -818,10 +818,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
                             %commitment,
                             "Unknown parent hash for blob"
                         );
-                        self.send_sync_message(SyncMessage::UnknownParentBlob(
-                            peer_id,
-                            blob_sidecar,
-                        ));
+                        self.send_sync_message(SyncMessage::UnknownParentBlob(peer_id, blob));
                     }
                     GossipBlobError::KzgNotInitialized
                     | GossipBlobError::PubkeyCacheTimeout
@@ -1193,7 +1190,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
                 );
                 return None;
             }
-            Err(BlockError::ParentUnknown { .. }) => {
+            Err(BlockError::ParentUnknown(block)) => {
                 debug!(?block_root, "Unknown parent for gossip block");
                 self.send_sync_message(SyncMessage::UnknownParentBlock(peer_id, block, block_root));
                 return None;
@@ -1461,7 +1458,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
                     "Processed block, waiting for other components"
                 );
             }
-            Err(BlockError::ParentUnknown { .. }) => {
+            Err(BlockError::ParentUnknown(_)) => {
                 // This should not occur. It should be checked by `should_forward_block`.
                 // Do not send sync message UnknownParentBlock to prevent conflicts with the
                 // BlockComponentProcessed message below. If this error ever happens, lookup sync
@@ -3013,7 +3010,7 @@ impl<T: BeaconChainTypes> NetworkBeaconProcessor<T> {
         invalid_block_storage: &InvalidBlockStorage,
         block_root: Hash256,
         block: &SignedBeaconBlock<T::EthSpec>,
-        error: &BlockError,
+        error: &BlockError<T::EthSpec>,
         log: &Logger,
     ) {
         if let InvalidBlockStorage::Enabled(base_dir) = invalid_block_storage {

@@ -273,6 +273,7 @@ impl<E: EthSpec> PendingComponents<E> {
                 let num_blobs_expected = diet_executed_block.num_blobs_expected();
                 let Some(verified_blobs) = verified_blobs
                     .into_iter()
+                    .cloned()
                     .map(|b| b.map(|b| b.to_blob()))
                     .take(num_blobs_expected)
                     .collect::<Option<Vec<_>>>()
@@ -1155,9 +1156,7 @@ mod pending_components_tests {
     use rand::SeedableRng;
     use state_processing::ConsensusContext;
     use types::test_utils::TestRandom;
-    use types::{
-        BeaconState, FixedBytesExtended, ForkName, MainnetEthSpec, SignedBeaconBlock, Slot,
-    };
+    use types::{BeaconState, ForkName, MainnetEthSpec, SignedBeaconBlock, Slot};
 
     type E = MainnetEthSpec;
 

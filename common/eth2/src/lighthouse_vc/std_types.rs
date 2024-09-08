@@ -8,7 +8,6 @@ pub use slashing_protection::interchange::Interchange;
 #[derive(Debug, Deserialize, Serialize, PartialEq)]
 pub struct GetFeeRecipientResponse {
     pub pubkey: PublicKeyBytes,
-    #[serde(with = "serde_utils::address_hex")]
     pub ethaddress: Address,
 }
 

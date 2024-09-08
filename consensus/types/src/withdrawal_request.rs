@@ -20,7 +20,6 @@ use tree_hash_derive::TreeHash;
     TestRandom,
 )]
 pub struct WithdrawalRequest {
-    #[serde(with = "serde_utils::address_hex")]
     pub source_address: Address,
     pub validator_pubkey: PublicKeyBytes,
     #[serde(with = "serde_utils::quoted_u64")]

@@ -4,7 +4,6 @@ use std::net::IpAddr;
 use std::task::{Context, Poll};
 
 use futures::StreamExt;
-use libp2p::core::transport::PortUse;
 use libp2p::core::ConnectedPoint;
 use libp2p::identity::PeerId;
 use libp2p::swarm::behaviour::{ConnectionClosed, ConnectionEstablished, DialFailure, FromSwarm};
@@ -221,7 +220,6 @@ impl<E: EthSpec> NetworkBehaviour for PeerManager<E> {
         peer_id: PeerId,
         addr: &libp2p::Multiaddr,
         _role_override: libp2p::core::Endpoint,
-        _port_use: PortUse,
     ) -> Result<libp2p::swarm::THandler<Self>, libp2p::swarm::ConnectionDenied> {
         trace!(%peer_id, multiaddr = %addr,"Outbound connection");
         match self.ban_status(&peer_id) {
@@ -248,6 +246,10 @@ impl<E: EthSpec> PeerManager<E> {
             "Connection established"
         );
 
+        if other_established == 0 {
+            self.events.push(PeerManagerEvent::MetaData(peer_id));
+        }
+
         // Update the prometheus metrics
         if self.metrics_enabled {
             metrics::inc_counter(&metrics::PEER_CONNECT_EVENT_COUNT);
@@ -269,10 +271,6 @@ impl<E: EthSpec> PeerManager<E> {
             // Gracefully disconnect the peer.
             self.disconnect_peer(peer_id, GoodbyeReason::TooManyPeers);
             return;
-        }
-
-        if other_established == 0 {
-            self.events.push(PeerManagerEvent::MetaData(peer_id));
         }
 
         // NOTE: We don't register peers that we are disconnecting immediately. The network service

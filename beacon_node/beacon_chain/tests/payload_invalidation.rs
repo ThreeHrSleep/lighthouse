@@ -212,7 +212,7 @@ impl InvalidPayloadRig {
             .unwrap();
     }
 
-    async fn import_block_parametric<F: Fn(&BlockError) -> bool>(
+    async fn import_block_parametric<F: Fn(&BlockError<E>) -> bool>(
         &mut self,
         new_payload_response: Payload,
         forkchoice_response: Payload,
@@ -1280,7 +1280,7 @@ struct OptimisticTransitionSetup {
 impl OptimisticTransitionSetup {
     async fn new(num_blocks: usize, ttd: u64) -> Self {
         let mut spec = E::default_spec();
-        spec.terminal_total_difficulty = Uint256::from(ttd);
+        spec.terminal_total_difficulty = ttd.into();
         let mut rig = InvalidPayloadRig::new_with_spec(spec).enable_attestations();
         rig.move_to_terminal_block();
 
@@ -1323,7 +1323,7 @@ async fn build_optimistic_chain(
     // Build a brand-new testing harness. We will apply the blocks from the previous harness to
     // this one.
     let mut spec = E::default_spec();
-    spec.terminal_total_difficulty = Uint256::from(rig_ttd);
+    spec.terminal_total_difficulty = rig_ttd.into();
     let rig = InvalidPayloadRig::new_with_spec(spec);
 
     let spec = &rig.harness.chain.spec;

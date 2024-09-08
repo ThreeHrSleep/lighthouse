@@ -75,7 +75,10 @@ impl Inner {
         SszEth1Cache::from_ssz_bytes(bytes)
             .map_err(|e| format!("Ssz decoding error: {:?}", e))?
             .to_inner(config, spec)
-            .inspect(|inner| inner.block_cache.write().rebuild_by_hash_map())
+            .map(|inner| {
+                inner.block_cache.write().rebuild_by_hash_map();
+                inner
+            })
     }
 
     /// Returns a reference to the specification.

@@ -1,5 +1,3 @@
-use types::FixedBytesExtended;
-
 use super::*;
 
 pub fn get_no_votes_test_definition() -> ForkChoiceTestDefinition {

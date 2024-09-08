@@ -412,7 +412,13 @@ impl<E: EthSpec> AttestationBase<E> {
     pub fn extend_aggregation_bits(
         &self,
     ) -> Result<BitList<E::MaxValidatorsPerSlot>, ssz_types::Error> {
-        self.aggregation_bits.resize::<E::MaxValidatorsPerSlot>()
+        let mut extended_aggregation_bits: BitList<E::MaxValidatorsPerSlot> =
+            BitList::with_capacity(self.aggregation_bits.len())?;
+
+        for (i, bit) in self.aggregation_bits.iter().enumerate() {
+            extended_aggregation_bits.set(i, bit)?;
+        }
+        Ok(extended_aggregation_bits)
     }
 }
 

@@ -19,7 +19,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tracing::{debug, error, trace, warn};
-use types::{DataColumnSubnetId, EthSpec, SyncSubnetId};
+use types::{EthSpec, SyncSubnetId};
 
 pub use libp2p::core::Multiaddr;
 pub use libp2p::identity::Keypair;
@@ -33,7 +33,7 @@ pub use peerdb::peer_info::{
 };
 use peerdb::score::{PeerAction, ReportSource};
 pub use peerdb::sync_status::{SyncInfo, SyncStatus};
-use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::collections::{hash_map::Entry, HashMap};
 use std::net::IpAddr;
 use strum::IntoEnumIterator;
 
@@ -703,8 +703,6 @@ impl<E: EthSpec> PeerManager<E> {
 
     /// Received a metadata response from a peer.
     pub fn meta_data_response(&mut self, peer_id: &PeerId, meta_data: MetaData<E>) {
-        let mut invalid_meta_data = false;
-
         if let Some(peer_info) = self.network_globals.peers.write().peer_info_mut(peer_id) {
             if let Some(known_meta_data) = &peer_info.meta_data() {
                 if *known_meta_data.seq_number() < *meta_data.seq_number() {
@@ -744,7 +742,8 @@ impl<E: EthSpec> PeerManager<E> {
                 }
             }
         } else {
-            error!(%peer_id, "Received METADATA from an unknown peer");
+            error!(self.log, "Received METADATA from an unknown peer";
+                "peer_id" => %peer_id);
         }
 
         // Disconnect peers with invalid metadata and find other peers instead.
@@ -1323,7 +1322,6 @@ impl<E: EthSpec> PeerManager<E> {
         let mut peers_connected = 0;
         let mut clients_per_peer = HashMap::new();
         let mut peers_connected_mutli: HashMap<(&str, &str), i32> = HashMap::new();
-        let mut peers_per_custody_subnet_count: HashMap<u64, i64> = HashMap::new();
 
         for (_, peer_info) in self.network_globals.peers.read().connected_peers() {
             peers_connected += 1;
@@ -1354,25 +1352,10 @@ impl<E: EthSpec> PeerManager<E> {
             *peers_connected_mutli
                 .entry((direction, transport))
                 .or_default() += 1;
-
-            if let Some(MetaData::V3(meta_data)) = peer_info.meta_data() {
-                *peers_per_custody_subnet_count
-                    .entry(meta_data.custody_subnet_count)
-                    .or_default() += 1;
-            }
         }
 
         // PEERS_CONNECTED
         metrics::set_gauge(&metrics::PEERS_CONNECTED, peers_connected);
-
-        // CUSTODY_SUBNET_COUNT
-        for (custody_subnet_count, peer_count) in peers_per_custody_subnet_count.into_iter() {
-            metrics::set_gauge_vec(
-                &metrics::PEERS_PER_CUSTODY_SUBNET_COUNT,
-                &[&custody_subnet_count.to_string()],
-                peer_count,
-            )
-        }
 
         // PEERS_PER_CLIENT
         for client_kind in ClientKind::iter() {
@@ -1767,7 +1750,11 @@ mod tests {
             .write()
             .peer_info_mut(&peer0)
             .unwrap()
-            .set_meta_data(MetaData::V2(metadata));
+            .set_meta_data(
+                MetaData::V2(metadata),
+                None,
+                &peer_manager.network_globals.spec,
+            );
         peer_manager
             .network_globals
             .peers
@@ -1787,7 +1774,11 @@ mod tests {
             .write()
             .peer_info_mut(&peer2)
             .unwrap()
-            .set_meta_data(MetaData::V2(metadata));
+            .set_meta_data(
+                MetaData::V2(metadata),
+                None,
+                &peer_manager.network_globals.spec,
+            );
         peer_manager
             .network_globals
             .peers
@@ -1807,7 +1798,11 @@ mod tests {
             .write()
             .peer_info_mut(&peer4)
             .unwrap()
-            .set_meta_data(MetaData::V2(metadata));
+            .set_meta_data(
+                MetaData::V2(metadata),
+                None,
+                &peer_manager.network_globals.spec,
+            );
         peer_manager
             .network_globals
             .peers
@@ -1881,7 +1876,11 @@ mod tests {
                 .write()
                 .peer_info_mut(&peer)
                 .unwrap()
-                .set_meta_data(MetaData::V2(metadata));
+                .set_meta_data(
+                    MetaData::V2(metadata),
+                    None,
+                    &peer_manager.network_globals.spec,
+                );
             peer_manager
                 .network_globals
                 .peers
@@ -2005,7 +2004,11 @@ mod tests {
                 .write()
                 .peer_info_mut(&peer)
                 .unwrap()
-                .set_meta_data(MetaData::V2(metadata));
+                .set_meta_data(
+                    MetaData::V2(metadata),
+                    None,
+                    &peer_manager.network_globals.spec,
+                );
             let long_lived_subnets = peer_manager
                 .network_globals
                 .peers
@@ -2114,7 +2117,11 @@ mod tests {
                 .write()
                 .peer_info_mut(&peer)
                 .unwrap()
-                .set_meta_data(MetaData::V2(metadata));
+                .set_meta_data(
+                    MetaData::V2(metadata),
+                    None,
+                    &peer_manager.network_globals.spec,
+                );
             let long_lived_subnets = peer_manager
                 .network_globals
                 .peers
@@ -2280,7 +2287,11 @@ mod tests {
                 .write()
                 .peer_info_mut(&peer)
                 .unwrap()
-                .set_meta_data(MetaData::V2(metadata));
+                .set_meta_data(
+                    MetaData::V2(metadata),
+                    None,
+                    &peer_manager.network_globals.spec,
+                );
             let long_lived_subnets = peer_manager
                 .network_globals
                 .peers
@@ -2437,7 +2448,11 @@ mod tests {
 
                     let mut peer_db = peer_manager.network_globals.peers.write();
                     let peer_info = peer_db.peer_info_mut(&condition.peer_id).unwrap();
-                    peer_info.set_meta_data(MetaData::V2(metadata));
+                    peer_info.set_meta_data(
+                        MetaData::V2(metadata),
+                        None,
+                        &peer_manager.network_globals.spec,
+                    );
                     peer_info.set_gossipsub_score(condition.gossipsub_score);
                     peer_info.add_to_score(condition.score);
 

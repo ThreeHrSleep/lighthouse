@@ -16,8 +16,8 @@ use tokio::time::sleep;
 use tracing::{debug, warn};
 use types::{
     BeaconBlock, BeaconBlockAltair, BeaconBlockBase, BeaconBlockBellatrix, BlobSidecar, ChainSpec,
-    EmptyBlock, Epoch, EthSpec, FixedBytesExtended, ForkContext, ForkName, Hash256, MinimalEthSpec,
-    Signature, SignedBeaconBlock, Slot,
+    EmptyBlock, Epoch, EthSpec, ForkContext, ForkName, Hash256, MinimalEthSpec, Signature,
+    SignedBeaconBlock, Slot,
 };
 
 type E = MinimalEthSpec;
@@ -78,18 +78,18 @@ fn test_tcp_status_rpc() {
         // Dummy STATUS RPC message
         let rpc_request = Request::Status(StatusMessage {
             fork_digest: [0; 4],
-            finalized_root: Hash256::zero(),
+            finalized_root: Hash256::from_low_u64_be(0),
             finalized_epoch: Epoch::new(1),
-            head_root: Hash256::zero(),
+            head_root: Hash256::from_low_u64_be(0),
             head_slot: Slot::new(1),
         });
 
         // Dummy STATUS RPC message
         let rpc_response = Response::Status(StatusMessage {
             fork_digest: [0; 4],
-            finalized_root: Hash256::zero(),
+            finalized_root: Hash256::from_low_u64_be(0),
             finalized_epoch: Epoch::new(1),
-            head_root: Hash256::zero(),
+            head_root: Hash256::from_low_u64_be(0),
             head_slot: Slot::new(1),
         });
 
@@ -757,12 +757,12 @@ fn test_tcp_blocks_by_root_chunked_rpc() {
         // BlocksByRoot Request
         let rpc_request = Request::BlocksByRoot(BlocksByRootRequest::new(
             vec![
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
             ],
             &spec,
         ));
@@ -895,16 +895,16 @@ fn test_tcp_blocks_by_root_chunked_rpc_terminates_correctly() {
         // BlocksByRoot Request
         let rpc_request = Request::BlocksByRoot(BlocksByRootRequest::new(
             vec![
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
-                Hash256::zero(),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
+                Hash256::from_low_u64_be(0),
             ],
             &spec,
         ));

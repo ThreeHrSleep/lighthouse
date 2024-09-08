@@ -195,8 +195,6 @@ impl BlockCache {
 
 #[cfg(test)]
 mod tests {
-    use types::FixedBytesExtended;
-
     use super::*;
 
     fn get_block(i: u64, interval_secs: u64) -> Eth1Block {

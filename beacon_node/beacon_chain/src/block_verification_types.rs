@@ -397,39 +397,39 @@ pub type GossipVerifiedBlockContents<E> = (
 );
 
 #[derive(Debug)]
-pub enum BlockContentsError {
-    BlockError(BlockError),
-    BlobError(GossipBlobError),
+pub enum BlockContentsError<E: EthSpec> {
+    BlockError(BlockError<E>),
+    BlobError(GossipBlobError<E>),
     BlobSidecarError(blob_sidecar::BlobSidecarError),
     DataColumnError(GossipDataColumnError),
     DataColumnSidecarError(data_column_sidecar::DataColumnSidecarError),
 }
 
-impl From<BlockError> for BlockContentsError {
-    fn from(value: BlockError) -> Self {
+impl<E: EthSpec> From<BlockError<E>> for BlockContentsError<E> {
+    fn from(value: BlockError<E>) -> Self {
         Self::BlockError(value)
     }
 }
 
-impl From<GossipBlobError> for BlockContentsError {
-    fn from(value: GossipBlobError) -> Self {
+impl<E: EthSpec> From<GossipBlobError<E>> for BlockContentsError<E> {
+    fn from(value: GossipBlobError<E>) -> Self {
         Self::BlobError(value)
     }
 }
 
-impl From<GossipDataColumnError> for BlockContentsError {
+impl<E: EthSpec> From<GossipDataColumnError> for BlockContentsError<E> {
     fn from(value: GossipDataColumnError) -> Self {
         Self::DataColumnError(value)
     }
 }
 
-impl From<data_column_sidecar::DataColumnSidecarError> for BlockContentsError {
+impl<E: EthSpec> From<data_column_sidecar::DataColumnSidecarError> for BlockContentsError<E> {
     fn from(value: data_column_sidecar::DataColumnSidecarError) -> Self {
         Self::DataColumnSidecarError(value)
     }
 }
 
-impl std::fmt::Display for BlockContentsError {
+impl<E: EthSpec> std::fmt::Display for BlockContentsError<E> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BlockContentsError::BlockError(err) => {
@@ -462,6 +462,7 @@ pub trait AsBlock<E: EthSpec> {
     fn as_block(&self) -> &SignedBeaconBlock<E>;
     fn block_cloned(&self) -> Arc<SignedBeaconBlock<E>>;
     fn canonical_root(&self) -> Hash256;
+    fn into_rpc_block(self) -> RpcBlock<E>;
 }
 
 impl<E: EthSpec> AsBlock<E> for Arc<SignedBeaconBlock<E>> {
@@ -499,6 +500,10 @@ impl<E: EthSpec> AsBlock<E> for Arc<SignedBeaconBlock<E>> {
 
     fn canonical_root(&self) -> Hash256 {
         SignedBeaconBlock::canonical_root(self)
+    }
+
+    fn into_rpc_block(self) -> RpcBlock<E> {
+        RpcBlock::new_without_blobs(None, self)
     }
 }
 
@@ -542,6 +547,15 @@ impl<E: EthSpec> AsBlock<E> for MaybeAvailableBlock<E> {
     fn canonical_root(&self) -> Hash256 {
         self.as_block().canonical_root()
     }
+
+    fn into_rpc_block(self) -> RpcBlock<E> {
+        match self {
+            MaybeAvailableBlock::Available(available_block) => available_block.into_rpc_block(),
+            MaybeAvailableBlock::AvailabilityPending { block_root, block } => {
+                RpcBlock::new_without_blobs(Some(block_root), block)
+            }
+        }
+    }
 }
 
 impl<E: EthSpec> AsBlock<E> for AvailableBlock<E> {
@@ -580,6 +594,36 @@ impl<E: EthSpec> AsBlock<E> for AvailableBlock<E> {
     fn canonical_root(&self) -> Hash256 {
         self.block().canonical_root()
     }
+
+    fn into_rpc_block(self) -> RpcBlock<E> {
+        let number_of_columns = self.spec.number_of_columns;
+        let (block_root, block, blobs_opt, data_columns_opt) = self.deconstruct();
+        // Circumvent the constructor here, because an Available block will have already had
+        // consistency checks performed.
+        let inner = match (blobs_opt, data_columns_opt) {
+            (None, None) => RpcBlockInner::Block(block),
+            (Some(blobs), _) => RpcBlockInner::BlockAndBlobs(block, blobs),
+            (_, Some(data_columns)) => RpcBlockInner::BlockAndCustodyColumns(
+                block,
+                RuntimeVariableList::new(
+                    data_columns
+                        .into_iter()
+                        // TODO(das): This is an ugly hack that should be removed. After updating
+                        // store types to handle custody data columns this should not be required.
+                        // It's okay-ish because available blocks must have all the required custody
+                        // columns.
+                        .map(|d| CustodyDataColumn::from_asserted_custody(d))
+                        .collect(),
+                    number_of_columns,
+                )
+                .expect("data column list is within bounds"),
+            ),
+        };
+        RpcBlock {
+            block_root,
+            block: inner,
+        }
+    }
 }
 
 impl<E: EthSpec> AsBlock<E> for RpcBlock<E> {
@@ -617,5 +661,9 @@ impl<E: EthSpec> AsBlock<E> for RpcBlock<E> {
     }
     fn canonical_root(&self) -> Hash256 {
         self.as_block().canonical_root()
+    }
+
+    fn into_rpc_block(self) -> RpcBlock<E> {
+        self
     }
 }

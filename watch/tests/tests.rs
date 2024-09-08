@@ -852,7 +852,6 @@ async fn chain_grows() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[allow(clippy::large_stack_frames)]
 async fn chain_grows_with_metadata() {
     let builder = TesterBuilder::new().await;
 
@@ -960,7 +959,6 @@ async fn chain_grows_with_metadata() {
 
 #[cfg(unix)]
 #[tokio::test]
-#[allow(clippy::large_stack_frames)]
 async fn chain_grows_with_metadata_and_multiple_skip_slots() {
     let builder = TesterBuilder::new().await;
 

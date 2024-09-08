@@ -47,7 +47,6 @@ pub struct ExecutionPayloadHeader<E: EthSpec> {
     #[superstruct(getter(copy))]
     pub parent_hash: ExecutionBlockHash,
     #[superstruct(getter(copy))]
-    #[serde(with = "serde_utils::address_hex")]
     pub fee_recipient: Address,
     #[superstruct(getter(copy))]
     pub state_root: Hash256,

@@ -83,10 +83,12 @@ pub async fn handle_rpc<E: EthSpec>(
                 .ok_or_else(|| "missing/invalid params[1] value".to_string())
                 .map_err(|s| (s, BAD_PARAMS_ERROR_CODE))?;
             if full_tx {
-                Err((
-                    "full_tx support has been removed".to_string(),
-                    BAD_PARAMS_ERROR_CODE,
-                ))
+                Ok(serde_json::to_value(
+                    ctx.execution_block_generator
+                        .read()
+                        .execution_block_with_txs_by_hash(hash),
+                )
+                .unwrap())
             } else {
                 Ok(serde_json::to_value(
                     ctx.execution_block_generator
@@ -328,14 +330,14 @@ pub async fn handle_rpc<E: EthSpec>(
                     JsonExecutionPayload::V1(execution_payload) => {
                         serde_json::to_value(JsonGetPayloadResponseV1 {
                             execution_payload,
-                            block_value: Uint256::from(DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI),
+                            block_value: DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI.into(),
                         })
                         .unwrap()
                     }
                     JsonExecutionPayload::V2(execution_payload) => {
                         serde_json::to_value(JsonGetPayloadResponseV2 {
                             execution_payload,
-                            block_value: Uint256::from(DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI),
+                            block_value: DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI.into(),
                         })
                         .unwrap()
                     }
@@ -348,7 +350,7 @@ pub async fn handle_rpc<E: EthSpec>(
                     JsonExecutionPayload::V3(execution_payload) => {
                         serde_json::to_value(JsonGetPayloadResponseV3 {
                             execution_payload,
-                            block_value: Uint256::from(DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI),
+                            block_value: DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI.into(),
                             blobs_bundle: maybe_blobs
                                 .ok_or((
                                     "No blobs returned despite V3 Payload".to_string(),
@@ -365,7 +367,7 @@ pub async fn handle_rpc<E: EthSpec>(
                     JsonExecutionPayload::V4(execution_payload) => {
                         serde_json::to_value(JsonGetPayloadResponseV4 {
                             execution_payload,
-                            block_value: Uint256::from(DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI),
+                            block_value: DEFAULT_MOCK_EL_PAYLOAD_VALUE_WEI.into(),
                             blobs_bundle: maybe_blobs
                                 .ok_or((
                                     "No blobs returned despite V4 Payload".to_string(),
@@ -554,25 +556,40 @@ pub async fn handle_rpc<E: EthSpec>(
 
             let mut response = vec![];
             for block_num in start..(start + count) {
-                let maybe_payload = ctx
+                let maybe_block = ctx
                     .execution_block_generator
                     .read()
-                    .execution_payload_by_number(block_num);
+                    .execution_block_with_txs_by_number(block_num);
 
-                match maybe_payload {
-                    Some(payload) => {
-                        assert!(
-                            !payload.fork_name().electra_enabled(),
-                            "payload bodies V1 is not supported for Electra blocks"
-                        );
-                        let payload_body = ExecutionPayloadBodyV1 {
-                            transactions: payload.transactions().clone(),
-                            withdrawals: payload.withdrawals().ok().cloned(),
-                        };
-                        let json_payload_body = JsonExecutionPayloadBody::V1(
-                            JsonExecutionPayloadBodyV1::<E>::from(payload_body),
-                        );
-                        response.push(Some(json_payload_body));
+                match maybe_block {
+                    Some(block) => {
+                        let transactions = Transactions::<E>::new(
+                            block
+                                .transactions()
+                                .iter()
+                                .map(|transaction| VariableList::new(transaction.rlp().to_vec()))
+                                .collect::<Result<_, _>>()
+                                .map_err(|e| {
+                                    (
+                                        format!("failed to deserialize transaction: {:?}", e),
+                                        GENERIC_ERROR_CODE,
+                                    )
+                                })?,
+                        )
+                        .map_err(|e| {
+                            (
+                                format!("failed to deserialize transactions: {:?}", e),
+                                GENERIC_ERROR_CODE,
+                            )
+                        })?;
+
+                        response.push(Some(JsonExecutionPayloadBodyV1::<E> {
+                            transactions,
+                            withdrawals: block
+                                .withdrawals()
+                                .ok()
+                                .map(|withdrawals| VariableList::from(withdrawals.clone())),
+                        }));
                     }
                     None => response.push(None),
                 }
@@ -594,28 +611,63 @@ pub async fn handle_rpc<E: EthSpec>(
 
             let mut response = vec![];
             for block_num in start..(start + count) {
-                let maybe_payload = ctx
+                let maybe_block = ctx
                     .execution_block_generator
                     .read()
-                    .execution_payload_by_number(block_num);
+                    .execution_block_with_txs_by_number(block_num);
 
-                match maybe_payload {
-                    Some(payload) => {
+                match maybe_block {
+                    Some(block) => {
+                        let transactions = Transactions::<E>::new(
+                            block
+                                .transactions()
+                                .iter()
+                                .map(|transaction| VariableList::new(transaction.rlp().to_vec()))
+                                .collect::<Result<_, _>>()
+                                .map_err(|e| {
+                                    (
+                                        format!("failed to deserialize transaction: {:?}", e),
+                                        GENERIC_ERROR_CODE,
+                                    )
+                                })?,
+                        )
+                        .map_err(|e| {
+                            (
+                                format!("failed to deserialize transactions: {:?}", e),
+                                GENERIC_ERROR_CODE,
+                            )
+                        })?;
+
                         // TODO(electra): add testing for:
                         // deposit_requests
                         // withdrawal_requests
                         // consolidation_requests
-                        let payload_body = ExecutionPayloadBodyV2 {
-                            transactions: payload.transactions().clone(),
-                            withdrawals: payload.withdrawals().ok().cloned(),
-                            deposit_requests: payload.deposit_requests().ok().cloned(),
-                            withdrawal_requests: payload.withdrawal_requests().ok().cloned(),
-                            consolidation_requests: payload.consolidation_requests().ok().cloned(),
-                        };
-                        let json_payload_body = JsonExecutionPayloadBody::V2(
-                            JsonExecutionPayloadBodyV2::<E>::from(payload_body),
-                        );
-                        response.push(Some(json_payload_body));
+                        response.push(Some(JsonExecutionPayloadBodyV2::<E> {
+                            transactions,
+                            withdrawals: block
+                                .withdrawals()
+                                .ok()
+                                .map(|withdrawals| VariableList::from(withdrawals.clone())),
+                            deposit_requests: block.deposit_requests().ok().map(
+                                |deposit_requests| VariableList::from(deposit_requests.clone()),
+                            ),
+                            withdrawal_requests: block.withdrawal_requests().ok().map(
+                                |withdrawal_requests| {
+                                    VariableList::from(withdrawal_requests.clone())
+                                },
+                            ),
+                            consolidation_requests: block.consolidation_requests().ok().map(
+                                |consolidation_requests| {
+                                    VariableList::from(
+                                        consolidation_requests
+                                            .clone()
+                                            .into_iter()
+                                            .map(Into::into)
+                                            .collect::<Vec<_>>(),
+                                    )
+                                },
+                            ),
+                        }));
                     }
                     None => response.push(None),
                 }

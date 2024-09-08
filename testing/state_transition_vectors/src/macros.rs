@@ -4,7 +4,6 @@
 /// - `mod tests`: runs all the test vectors locally.
 macro_rules! vectors_and_tests {
     ($($name: ident, $test: expr),*) => {
-        #[allow(clippy::large_stack_frames)]
         pub async fn vectors() -> Vec<TestVector> {
             let mut vec = vec![];
 

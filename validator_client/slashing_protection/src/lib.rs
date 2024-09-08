@@ -130,8 +130,6 @@ impl Display for NotSafe {
 
 #[cfg(test)]
 mod test {
-    use types::FixedBytesExtended;
-
     use super::*;
 
     #[test]

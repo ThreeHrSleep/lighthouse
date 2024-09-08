@@ -9,6 +9,5 @@ pub struct ProposerPreparationData {
     #[serde(with = "serde_utils::quoted_u64")]
     pub validator_index: u64,
     /// The fee-recipient address.
-    #[serde(with = "serde_utils::address_hex")]
     pub fee_recipient: Address,
 }

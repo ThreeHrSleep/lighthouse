@@ -12,10 +12,8 @@ harness = false
 criterion = { workspace = true }
 
 [dependencies]
-alloy-primitives = { workspace = true }
 ethereum_hashing = { workspace = true }
-fixed_bytes = { workspace = true }
+ethereum-types = { workspace = true }
 
 [features]
-arbitrary = ["alloy-primitives/arbitrary"]
-getrandom = ["alloy-primitives/getrandom"]
+arbitrary = ["ethereum-types/arbitrary"]

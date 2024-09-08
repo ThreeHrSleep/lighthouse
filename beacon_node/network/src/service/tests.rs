@@ -176,7 +176,7 @@ mod tests {
         // Make sure the service is subscribed to the topics.
         let (old_topic1, old_topic2) = {
             let mut subnets = SubnetId::compute_subnets_for_epoch::<MinimalEthSpec>(
-                network_globals.local_enr().node_id().raw(),
+                network_globals.local_enr().node_id().raw().into(),
                 beacon_chain.epoch().unwrap(),
                 &spec,
             )
