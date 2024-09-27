@@ -312,12 +312,12 @@ impl<E: EthSpec> EnvironmentBuilder<E> {
         info!(?path, "Logging to file");
 
         // If the http API is enabled, we may need to send logs to be consumed by subscribers.
-        if config.sse_logging {
-            let sse_logger = SSELoggingComponents::new(SSE_LOG_CHANNEL_SIZE);
-            self.sse_logging_components = Some(sse_logger.clone());
+        // if config.sse_logging {
+        //     let sse_logger = SSELoggingComponents::new(SSE_LOG_CHANNEL_SIZE);
+        //     self.sse_logging_components = Some(sse_logger.clone());
 
-            log = Logger::root(Duplicate::new(log, sse_logger).fuse(), o!());
-        }
+        //     log = Logger::root(Duplicate::new(log, sse_logger).fuse(), o!());
+        // }
 
         self.log = Some(log);
 

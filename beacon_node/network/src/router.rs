@@ -130,7 +130,7 @@ impl<T: BeaconChainTypes> Router<T> {
             network_globals,
             chain: beacon_chain,
             sync_send,
-            network: HandlerNetworkContext::new(network_send, log.clone()),
+            network: HandlerNetworkContext::new(network_send),
             network_beacon_processor,
             log: message_handler_log,
             logger_debounce: TimeLatch::default(),
@@ -711,13 +711,11 @@ impl<T: BeaconChainTypes> Router<T> {
 pub struct HandlerNetworkContext<E: EthSpec> {
     /// The network channel to relay messages to the Network service.
     network_send: mpsc::UnboundedSender<NetworkMessage<E>>,
-    /// Logger for the `NetworkContext`.
-    log: slog::Logger,
 }
 
 impl<E: EthSpec> HandlerNetworkContext<E> {
-    pub fn new(network_send: mpsc::UnboundedSender<NetworkMessage<E>>, log: slog::Logger) -> Self {
-        Self { network_send, log }
+    pub fn new(network_send: mpsc::UnboundedSender<NetworkMessage<E>>) -> Self {
+        Self { network_send }
     }
 
     /// Sends a message to the network task.

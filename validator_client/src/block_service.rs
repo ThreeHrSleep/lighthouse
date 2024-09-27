@@ -541,7 +541,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                 beacon_node
                     .post_beacon_blocks(signed_block)
                     .await
-                    .or_else(|e| handle_block_post_error(e, slot, log))?
+                    .or_else(|e| handle_block_post_error(e, slot))?
             }
             SignedBlock::Blinded(signed_block) => {
                 let _post_timer = metrics::start_timer_vec(
@@ -551,7 +551,7 @@ impl<T: SlotClock + 'static, E: EthSpec> BlockService<T, E> {
                 beacon_node
                     .post_beacon_blinded_blocks(signed_block)
                     .await
-                    .or_else(|e| handle_block_post_error(e, slot, log))?
+                    .or_else(|e| handle_block_post_error(e, slot))?
             }
         }
         Ok::<_, BlockError>(())
@@ -674,7 +674,7 @@ impl<E: EthSpec> SignedBlock<E> {
     }
 }
 
-fn handle_block_post_error(err: eth2::Error, slot: Slot, log: &Logger) -> Result<(), BlockError> {
+fn handle_block_post_error(err: eth2::Error, slot: Slot) -> Result<(), BlockError> {
     // Handle non-200 success codes.
     if let Some(status) = err.status() {
         if status == StatusCode::ACCEPTED {

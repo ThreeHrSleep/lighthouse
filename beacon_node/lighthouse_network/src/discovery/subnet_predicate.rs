@@ -15,8 +15,6 @@ pub fn subnet_predicate<E>(
 where
     E: EthSpec,
 {
-    let log_clone = log.clone();
-
     move |enr: &Enr| {
         let attestation_bitfield: EnrAttestationBitfield<E> = match enr.attestation_bitfield::<E>()
         {

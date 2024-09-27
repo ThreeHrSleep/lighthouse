@@ -74,11 +74,13 @@ pub async fn publish_block<T: BeaconChainTypes, B: IntoGossipVerifiedBlockConten
     let chain_cloned = chain.clone();
 
     /* actually publish a block */
-    let publish_block = move |block: Arc<SignedBeaconBlock<T::EthSpec>>,
-                              blobs_opt: Option<BlobSidecarList<T::EthSpec>>,
-                              data_cols_opt: Option<DataColumnSidecarList<T::EthSpec>>,
-                              sender,
-                              seen_timestamp| {
+    let publish_block_p2p = move |block: Arc<SignedBeaconBlock<T::EthSpec>>,
+                                  should_publish_block: bool,
+                                  blob_sidecars: Vec<Arc<BlobSidecar<T::EthSpec>>>,
+                                  mut data_column_sidecars: DataColumnSidecarList<T::EthSpec>,
+                                  sender,
+                                  seen_timestamp|
+          -> Result<(), BlockError> {
         let publish_timestamp = timestamp_now();
         let publish_delay = publish_timestamp
             .checked_sub(seen_timestamp)
@@ -162,6 +164,169 @@ pub async fn publish_block<T: BeaconChainTypes, B: IntoGossipVerifiedBlockConten
             )) => {
                 // Allow the status code for duplicate blocks to be overridden based on config.
                 return Ok(warp::reply::with_status(
+                    warp::reply::json(&ErrorMessage {
+                        code: duplicate_status_code.as_u16(),
+                        message: "duplicate block".to_string(),
+                        stacktraces: vec![],
+                    }),
+                    duplicate_status_code,
+                )
+                .into_response());
+            }
+            Err(e) => {
+                warn!(
+                    ?slot,
+                    error = %e,
+                    "Not publishing block - not gossip verified"
+                );
+                return Err(warp_utils::reject::custom_bad_request(e.to_string()));
+            }
+        };
+
+    // TODO(das): We could potentially get rid of these conversions and pass `GossipVerified` types
+    // to `publish_block`, i.e. have `GossipVerified` types in `PubsubMessage`?
+    // This saves us from extra code and provides guarantee that published
+    // components are verified.
+    // Clone here, so we can take advantage of the `Arc`. The block in `BlockContents` is not,
+    // `Arc`'d but blobs are.
+    let block = gossip_verified_block.block.block_cloned();
+    let blobs_opt = gossip_verified_blobs.as_ref().map(|gossip_verified_blobs| {
+        let blobs = gossip_verified_blobs
+            .into_iter()
+            .map(|b| b.clone_blob())
+            .collect::<Vec<_>>();
+        VariableList::from(blobs)
+    });
+    let data_cols_opt = gossip_verified_data_columns
+        .as_ref()
+        .map(|gossip_verified_data_columns| {
+            gossip_verified_data_columns
+                .into_iter()
+                .map(|col| col.clone_data_column())
+                .collect::<Vec<_>>()
+        });
+
+    let block_root = block_root.unwrap_or(gossip_verified_block.block_root);
+
+    if let BroadcastValidation::Gossip = validation_level {
+        publish_block(
+            block.clone(),
+            blobs_opt.clone(),
+            data_cols_opt.clone(),
+            sender_clone.clone(),
+            seen_timestamp,
+        )
+        .map_err(|_| warp_utils::reject::custom_server_error("unable to publish".into()))?;
+    }
+
+    let block_clone = block.clone();
+
+    let publish_fn = move || match validation_level {
+        BroadcastValidation::Gossip => Ok(()),
+        BroadcastValidation::Consensus => publish_block(
+            block_clone,
+            blobs_opt,
+            data_cols_opt,
+            sender_clone,
+            seen_timestamp,
+        ),
+        BroadcastValidation::ConsensusAndEquivocation => {
+            check_slashable(&chain_clone, &blobs_opt, block_root, &block_clone)?;
+            publish_block(
+                block_clone,
+                blobs_opt,
+                data_cols_opt,
+                sender_clone,
+                seen_timestamp,
+            )?,
+            BroadcastValidation::ConsensusAndEquivocation => {
+                check_slashable(&chain, block_root, &block_to_publish)?;
+                publish_block_p2p(
+                    block_to_publish.clone(),
+                    should_publish_block,
+                    publishable_blobs.clone(),
+                    publishable_data_columns.clone(),
+                    sender_clone.clone(),
+                    seen_timestamp,
+                )?;
+            }
+        };
+        publish_fn_completed.store(true, Ordering::SeqCst);
+        Ok(())
+    };
+
+    for blob in gossip_verified_blobs.into_iter().flatten() {
+        // Importing the blobs could trigger block import and network publication in the case
+        // where the block was already seen on gossip.
+        if let Err(e) = Box::pin(chain.process_gossip_blob(blob, &publish_fn)).await {
+            let msg = format!("Invalid blob: {e}");
+            return if let BroadcastValidation::Gossip = validation_level {
+                Err(warp_utils::reject::broadcast_without_import(msg))
+            } else {
+                error!(
+                    reason = &msg,
+                    "Invalid blob provided to HTTP API"
+                );
+                Err(warp_utils::reject::custom_bad_request(msg))
+            };
+        }
+    }
+
+    if let Some(gossip_verified_data_columns) = gossip_verified_data_columns {
+        let custody_columns_indices = &network_globals.custody_columns;
+
+        let custody_columns = gossip_verified_data_columns
+            .into_iter()
+            .filter(|data_column| custody_columns_indices.contains(&data_column.index()))
+            .collect();
+
+        if let Err(e) = Box::pin(chain.process_gossip_data_columns(custody_columns)).await {
+            let msg = format!("Invalid data column: {e}");
+            return if let BroadcastValidation::Gossip = validation_level {
+                Err(warp_utils::reject::broadcast_without_import(msg))
+            } else {
+                error!(reason = &msg, "Invalid data column during block publication");
+                Err(warp_utils::reject::custom_bad_request(msg))
+            };
+        }
+    }
+
+    match gossip_verified_block_result {
+        Ok(gossip_verified_block) => {
+            let import_result = Box::pin(chain.process_block(
+                block_root,
+                gossip_verified_block,
+                NotifyExecutionLayer::Yes,
+                BlockImportSource::HttpApi,
+                publish_fn,
+            ))
+            .await;
+            post_block_import_logging_and_response(
+                import_result,
+                validation_level,
+                block,
+                is_locally_built_block,
+                seen_timestamp,
+                &chain,
+            )
+            .await
+        }
+        Err(BlockError::DuplicateFullyImported(root)) => {
+            if publish_fn_completed.load(Ordering::SeqCst) {
+                post_block_import_logging_and_response(
+                    Ok(AvailabilityProcessingStatus::Imported(root)),
+                    validation_level,
+                    block,
+                    is_locally_built_block,
+                    seen_timestamp,
+                    &chain,
+                )
+                .await
+            } else {
+                // None of the components provided in this HTTP request were new, so this was an
+                // entirely redundant duplicate request. Return a status code indicating this,
+                // which can be overridden based on config.
+                Ok(warp::reply::with_status(
                     warp::reply::json(&ErrorMessage {
                         code: duplicate_status_code.as_u16(),
                         message: "duplicate block".to_string(),
@@ -353,8 +518,8 @@ pub async fn publish_blinded_block<T: BeaconChainTypes>(
     network_globals: Arc<NetworkGlobals<T::EthSpec>>,
 ) -> Result<Response, Rejection> {
     let block_root = blinded_block.canonical_root();
-    let full_block: ProvenancedBlock<T, PublishBlockRequest<T::EthSpec>> =
-        reconstruct_block(chain.clone(), block_root, blinded_block).await?;
+    let full_block =
+    reconstruct_block(chain.clone(), block_root, blinded_block).await?;
     publish_block::<T, _>(
         Some(block_root),
         full_block,

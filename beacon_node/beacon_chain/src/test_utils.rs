@@ -543,7 +543,6 @@ where
             .shutdown_sender(shutdown_tx)
             .chain_config(chain_config)
             .event_handler(Some(ServerSentEventHandler::new_with_capacity(
-                log.clone(),
                 5,
             )))
             .validator_monitor_config(validator_monitor_config)

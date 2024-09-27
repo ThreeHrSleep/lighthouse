@@ -185,8 +185,7 @@ impl<E: EthSpec> Network<E> {
                 meta_data,
                 trusted_peers,
                 config.disable_peer_scoring,
-                &log,
-                ctx.chain_spec.clone(),
+                    ctx.chain_spec.clone(),
             );
             Arc::new(globals)
         };

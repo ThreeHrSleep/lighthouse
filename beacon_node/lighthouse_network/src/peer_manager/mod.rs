@@ -1493,7 +1493,7 @@ mod tests {
         };
         let log = build_log(slog::Level::Debug, false);
         let spec = E::default_spec();
-        let globals = NetworkGlobals::new_test_globals(trusted_peers, &log, spec);
+        let globals = NetworkGlobals::new_test_globals(trusted_peers, spec);
         PeerManager::new(config, Arc::new(globals), &log).unwrap()
     }
 

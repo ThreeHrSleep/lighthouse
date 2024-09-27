@@ -176,7 +176,6 @@ where
         let spec = chain_spec.ok_or("beacon_chain_start_method requires a chain spec")?;
         let event_handler = if self.http_api_config.enabled {
             Some(ServerSentEventHandler::new(
-                context.log().clone(),
                 self.http_api_config.sse_capacity_multiplier,
             ))
         } else {

@@ -4378,7 +4378,7 @@ pub fn serve<T: BeaconChainTypes>(
         .then(
             |blocks, task_spawner: TaskSpawner<T::EthSpec>, chain, log| {
                 task_spawner.blocking_json_task(Priority::P1, move || {
-                    block_rewards::compute_block_rewards(blocks, chain, log)
+                    block_rewards::compute_block_rewards(blocks, chain)
                 })
             },
         );

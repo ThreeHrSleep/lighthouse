@@ -150,7 +150,6 @@ pub async fn create_api_server<T: BeaconChainTypes>(
         meta_data,
         vec![],
         false,
-        &log,
         chain.spec.clone(),
     ));
 

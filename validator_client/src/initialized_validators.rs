@@ -1353,7 +1353,6 @@ impl InitializedValidators {
         }
 
         let validators_dir = self.validators_dir.clone();
-        let log = self.log.clone();
         if has_local_definitions && key_cache.is_modified() {
             tokio::task::spawn_blocking(move || {
                 match key_cache.save(validators_dir) {

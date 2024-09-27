@@ -94,7 +94,6 @@ pub fn get_block_rewards<T: BeaconChainTypes>(
 pub fn compute_block_rewards<T: BeaconChainTypes>(
     blocks: Vec<BlindedBeaconBlock<T::EthSpec>>,
     chain: Arc<BeaconChain<T>>,
-    log: Logger,
 ) -> Result<Vec<BlockReward>, warp::Rejection> {
     let mut block_rewards = Vec::with_capacity(blocks.len());
     let mut state_cache = LruCache::new(STATE_CACHE_SIZE);

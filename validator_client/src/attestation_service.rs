@@ -139,7 +139,6 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
             loop {
                 if let Some(duration_to_next_slot) = self.slot_clock.duration_to_next_slot() {
                     sleep(duration_to_next_slot + slot_duration / 3).await;
-                    let log = self.context.log();
 
                     if let Err(e) = self.spawn_attestation_tasks(slot_duration) {
                         crit!(error = e, "Failed to spawn attestation tasks")
@@ -314,8 +313,6 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         committee_index: CommitteeIndex,
         validator_duties: &[DutyAndProof],
     ) -> Result<Option<AttestationData>, String> {
-        let log = self.context.log();
-
         if validator_duties.is_empty() {
             return Ok(None);
         }
@@ -505,8 +502,6 @@ impl<T: SlotClock + 'static, E: EthSpec> AttestationService<T, E> {
         committee_index: CommitteeIndex,
         validator_duties: &[DutyAndProof],
     ) -> Result<(), String> {
-        let log = self.context.log();
-
         if !validator_duties
             .iter()
             .any(|duty_and_proof| duty_and_proof.selection_proof.is_some())

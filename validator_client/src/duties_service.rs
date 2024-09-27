@@ -382,7 +382,6 @@ pub fn start_update_service<T: SlotClock + 'static, E: EthSpec>(
      * Spawn the task which keeps track of local block proposal duties.
      */
     let duties_service = core_duties_service.clone();
-    let log = core_duties_service.context.log().clone();
     core_duties_service.context.executor.spawn(
         async move {
             loop {
@@ -411,7 +410,6 @@ pub fn start_update_service<T: SlotClock + 'static, E: EthSpec>(
      * Spawn the task which keeps track of local attestation duties.
      */
     let duties_service = core_duties_service.clone();
-    let log = core_duties_service.context.log().clone();
     core_duties_service.context.executor.spawn(
         async move {
             loop {
@@ -1045,8 +1043,6 @@ async fn fill_in_selection_proofs<T: SlotClock + 'static, E: EthSpec>(
     duties: Vec<AttesterData>,
     dependent_root: Hash256,
 ) {
-    let log = duties_service.context.log();
-
     // Sort duties by slot in a BTreeMap.
     let mut duties_by_slot: BTreeMap<Slot, Vec<_>> = BTreeMap::new();
 

@@ -105,7 +105,6 @@ pub struct Eth1FinalizationCache {
     by_checkpoint: CheckpointMap,
     pending_eth1: BTreeMap<u64, Eth1Data>,
     last_finalized: Option<Eth1Data>,
-    log: Logger,
 }
 
 /// Provides a cache of `Eth1CacheData` at epoch boundaries. This is used to
@@ -117,7 +116,6 @@ impl Eth1FinalizationCache {
             by_checkpoint: CheckpointMap::new(),
             pending_eth1: BTreeMap::new(),
             last_finalized: None,
-            log,
         }
     }
 
@@ -126,7 +124,6 @@ impl Eth1FinalizationCache {
             by_checkpoint: CheckpointMap::with_capacity(capacity),
             pending_eth1: BTreeMap::new(),
             last_finalized: None,
-            log,
         }
     }
 

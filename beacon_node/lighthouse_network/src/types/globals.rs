@@ -39,7 +39,6 @@ impl<E: EthSpec> NetworkGlobals<E> {
         local_metadata: MetaData<E>,
         trusted_peers: Vec<PeerId>,
         disable_peer_scoring: bool,
-        log: &slog::Logger,
         spec: ChainSpec,
     ) -> Self {
         let (custody_subnets, custody_columns) = if spec.is_peer_das_scheduled() {
@@ -69,7 +68,7 @@ impl<E: EthSpec> NetworkGlobals<E> {
             peer_id: RwLock::new(enr.peer_id()),
             listen_multiaddrs: RwLock::new(Vec::new()),
             local_metadata: RwLock::new(local_metadata),
-            peers: RwLock::new(PeerDB::new(trusted_peers, disable_peer_scoring, log)),
+            peers: RwLock::new(PeerDB::new(trusted_peers, disable_peer_scoring)),
             gossipsub_subscriptions: RwLock::new(HashSet::new()),
             sync_state: RwLock::new(SyncState::Stalled),
             backfill_state: RwLock::new(BackFillState::NotRequired),
@@ -181,7 +180,7 @@ impl<E: EthSpec> NetworkGlobals<E> {
         let keypair = libp2p::identity::secp256k1::Keypair::generate();
         let enr_key: discv5::enr::CombinedKey = discv5::enr::CombinedKey::from_secp256k1(&keypair);
         let enr = discv5::enr::Enr::builder().build(&enr_key).unwrap();
-        NetworkGlobals::new(enr, metadata, trusted_peers, false, log, spec)
+        NetworkGlobals::new(enr, metadata, trusted_peers, false, spec)
     }
 }
 
@@ -199,8 +198,12 @@ mod test {
         let custody_subnet_count = spec.data_column_sidecar_subnet_count / 2;
         let metadata = get_metadata(custody_subnet_count);
 
-        let globals =
-            NetworkGlobals::<E>::new_test_globals_with_metadata(vec![], metadata, &log, spec);
+        let globals = NetworkGlobals::<E>::new_test_globals_with_metadata(
+            vec![],
+            metadata,
+            config,
+            Arc::new(spec),
+        );
         assert_eq!(globals.custody_subnets.len(), custody_subnet_count as usize);
     }
 
@@ -214,8 +217,12 @@ mod test {
         let custody_columns_count = spec.number_of_columns / 2;
         let metadata = get_metadata(custody_subnet_count);
 
-        let globals =
-            NetworkGlobals::<E>::new_test_globals_with_metadata(vec![], metadata, &log, spec);
+        let globals = NetworkGlobals::<E>::new_test_globals_with_metadata(
+            vec![],
+            metadata,
+            config,
+            Arc::new(spec),
+        );
         assert_eq!(globals.custody_columns.len(), custody_columns_count);
     }
 

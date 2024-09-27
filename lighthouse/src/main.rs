@@ -18,7 +18,9 @@ use futures::TryFutureExt;
 use lighthouse_version::VERSION;
 use logging::crit;
 use malloc_utils::configure_memory_allocator;
+use tracing::instrument::WithSubscriber;
 use std::backtrace::Backtrace;
+use std::fmt::Debug;
 use std::path::PathBuf;
 use std::process::exit;
 use std::sync::LazyLock;
@@ -793,4 +795,5 @@ fn tracing_init() {
     {
         eprintln!("Failed to initialize logging {e}");
     }
+
 }

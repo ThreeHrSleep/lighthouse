@@ -196,7 +196,7 @@ impl<E: EthSpec> CandidateBeaconNode<E> {
 
         let new_status = if let Err(e) = self.is_online(was_offline, log).await {
             Err(e)
-        } else if let Err(e) = self.is_compatible(spec, log).await {
+        } else if let Err(e) = self.is_compatible(spec).await {
             Err(e)
         } else if let Err(e) = self.is_synced(slot_clock, log).await {
             Err(e)
@@ -244,7 +244,7 @@ impl<E: EthSpec> CandidateBeaconNode<E> {
     }
 
     /// Checks if the node has the correct specification.
-    async fn is_compatible(&self, spec: &ChainSpec, log: &Logger) -> Result<(), CandidateError> {
+    async fn is_compatible(&self, spec: &ChainSpec) -> Result<(), CandidateError> {
         let config = self
             .beacon_node
             .get_config_spec::<Config>()
@@ -485,7 +485,6 @@ impl<T: SlotClock, E: EthSpec> BeaconNodeFallback<T, E> {
         let mut errors = vec![];
         let mut to_retry = vec![];
         let mut retry_unsynced = vec![];
-        let log = &self.log.clone();
 
         // Run `func` using a `candidate`, returning the value or capturing errors.
         //
