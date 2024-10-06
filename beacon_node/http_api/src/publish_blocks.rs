@@ -345,7 +345,7 @@ pub async fn publish_block<T: BeaconChainTypes, B: IntoGossipVerifiedBlockConten
                 return Err(warp_utils::reject::custom_bad_request(e.to_string()));
             }
         };
-
+    }
     // TODO(das): We could potentially get rid of these conversions and pass `GossipVerified` types
     // to `publish_block`, i.e. have `GossipVerified` types in `PubsubMessage`?
     // This saves us from extra code and provides guarantee that published
@@ -604,14 +604,17 @@ pub async fn reconstruct_block<T: BeaconChainTypes>(
     match full_payload_opt {
         // A block without a payload is pre-merge and we consider it locally
         // built.
-        None => into_full_block_and_blobs(block, None).map(ProvenancedBlock::local),
+        None => block
+            .try_into_full_block(None)
+            .ok_or("Failed to build full block with payload".to_string())
+            .map(|full_block| ProvenancedBlock::local(Arc::new(full_block), None)),
         Some(ProvenancedPayload::Local(full_payload_contents)) => {
-            into_full_block_and_blobs(block, Some(full_payload_contents))
-                .map(ProvenancedBlock::local)
+            into_full_block_and_blobs::<T>(block, full_payload_contents)
+                .map(|(block, blobs)| ProvenancedBlock::local(block, blobs))
         }
         Some(ProvenancedPayload::Builder(full_payload_contents)) => {
-            into_full_block_and_blobs(block, Some(full_payload_contents))
-                .map(ProvenancedBlock::builder)
+            into_full_block_and_blobs::<T>(block, full_payload_contents)
+                .map(|(block, blobs)| ProvenancedBlock::builder(block, blobs))
         }
     }
     .map_err(|e| {
@@ -667,26 +670,11 @@ fn late_block_logging<T: BeaconChainTypes, P: AbstractExecPayload<T::EthSpec>>(
 /// Check if any of the blobs or the block are slashable. Returns `BlockError::Slashable` if so.
 fn check_slashable<T: BeaconChainTypes>(
     chain_clone: &BeaconChain<T>,
-    blobs_opt: &Option<BlobSidecarList<T::EthSpec>>,
     block_root: Hash256,
     block_clone: &SignedBeaconBlock<T::EthSpec, FullPayload<T::EthSpec>>,
+    log_clone: &Logger,
 ) -> Result<(), BlockError> {
     let slashable_cache = chain_clone.observed_slashable.read();
-    if let Some(blobs) = blobs_opt.as_ref() {
-        blobs.iter().try_for_each(|blob| {
-            if slashable_cache
-                .is_slashable(blob.slot(), blob.block_proposer_index(), blob.block_root())
-                .map_err(|e| BlockError::BeaconChainError(e.into()))?
-            {
-                warn!(
-                    slot = ?block_clone.slot(),
-                    "Not publishing equivocating blob"
-                );
-                return Err(BlockError::Slashable);
-            }
-            Ok(())
-        })?;
-    };
     if slashable_cache
         .is_slashable(
             block_clone.slot(),
@@ -696,10 +684,45 @@ fn check_slashable<T: BeaconChainTypes>(
         .map_err(|e| BlockError::BeaconChainError(e.into()))?
     {
         warn!(
-            slot = ?block_clone.slot(),
+            slot = ?block_clone.slot() ,
             "Not publishing equivocating block"
         );
         return Err(BlockError::Slashable);
     }
     Ok(())
+}
+
+/// Converting from a `SignedBlindedBeaconBlock` into a full `SignedBlockContents`.
+#[allow(clippy::type_complexity)]
+pub fn into_full_block_and_blobs<T: BeaconChainTypes>(
+    blinded_block: SignedBlindedBeaconBlock<T::EthSpec>,
+    maybe_full_payload_contents: FullPayloadContents<T::EthSpec>,
+) -> Result<(Arc<SignedBeaconBlock<T::EthSpec>>, UnverifiedBlobs<T>), String> {
+    match maybe_full_payload_contents {
+        // This variant implies a pre-deneb block
+        FullPayloadContents::Payload(execution_payload) => {
+            let signed_block = blinded_block
+                .try_into_full_block(Some(execution_payload))
+                .ok_or("Failed to build full block with payload".to_string())?;
+            Ok((Arc::new(signed_block), None))
+        }
+        // This variant implies a post-deneb block
+        FullPayloadContents::PayloadAndBlobs(payload_and_blobs) => {
+            let ExecutionPayloadAndBlobs {
+                execution_payload,
+                blobs_bundle,
+            } = payload_and_blobs;
+            let signed_block = blinded_block
+                .try_into_full_block(Some(execution_payload))
+                .ok_or("Failed to build full block with payload".to_string())?;
+
+            let BlobsBundle {
+                commitments: _,
+                proofs,
+                blobs,
+            } = blobs_bundle;
+
+            Ok((Arc::new(signed_block), Some((proofs, blobs))))
+        }
+    }
 }
